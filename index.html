@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мій FastAPI Фронтенд</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background-color: #1e1e1e;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            text-align: center;
+            border: 1px solid #333;
+            width: 320px;
+        }
+        h1 { color: #00ff88; margin-bottom: 20px; }
+        input {
+            width: 90%;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background-color: #252525;
+            color: white;
+            font-size: 14px;
+        }
+        button {
+            background-color: #00ff88;
+            color: #121212;
+            border: none;
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover { background-color: #00cc6e; }
+        .btn-load {
+            background-color: #333;
+            color: #fff;
+            margin-top: 15px;
+        }
+        .btn-load:hover { background-color: #444; }
+        #result { margin-top: 20px; font-size: 16px; color: #a0a0a0; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Керування БД </h1>
+        
+        <!-- Форма для введення даних -->
+        <input type="text" id="userName" placeholder="Введіть ім'я">
+        <input type="number" id="userAge" placeholder="Введіть вік">
+        <button onclick="sendUser()">Додати в базу</button>
+        
+        <!-- Кнопка для оновлення списку -->
+        <button class="btn-load" onclick="loadUsers()">Показати всіх з бази</button>
+        
+        <div id="result">Тут з'явиться результат...</div>
+    </div>
+
+    <script>
+        // Функція для відправки нового користувача
+        async function sendUser() {
+            let name = document.getElementById('userName').value;
+            let age = document.getElementById('userAge').value;
+
+            if(!name || !age) {
+                alert("Заповни всі поля!");
+                return;
+            }
+
+            try {
+                let response = await fetch('http://127.0.0.1:8000/add-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, age: parseInt(age) })
+                });
+                let data = await response.json();
+                
+                document.getElementById('result').innerText = data.message;
+                // Очищаємо поля після відправки
+                document.getElementById('userName').value = '';
+                document.getElementById('userAge').value = '';
+            } catch (error) {
+                document.getElementById('result').innerText = "Помилка відправки!";
+            }
+        }
+
+        // Функція для завантаження списку (вже знайома тобі)
+        async function loadUsers() {
+            try {
+                let response = await fetch('http://127.0.0.1:8000/users');
+                let data = await response.json();
+                let usersList = data.users_in_database.map(user => `ID: ${user[0]} — ${user[1]} (${user[2]} років)`).join('<br>');
+                document.getElementById('result').innerHTML = usersList;
+            } catch (error) {
+                document.getElementById('result').innerText = "Помилка завантаження!";
+            }
+        }
+    </script>
+
+</body>
+</html>
