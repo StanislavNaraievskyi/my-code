@@ -1,3 +1,4 @@
+import requests
 import sqlite3
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,17 +31,51 @@ def get_users_from_db():
     return {"users_in_database": all_users}
 
 
-# ➕ НОВИЙ МЕТОД: Додавання користувача через сайт
+# ➕ ОНОВЛЕНИЙ МЕТОД: Додавання користувача + сповіщення в Telegram
 @app.post("/add-user")
 def add_user_to_db(user: UserInput):
+    # 1. Записуємо в базу даних SQLite (як і раніше)
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
-
-    # Записуємо отримані з сайту ім'я та вік у таблицю
     cursor.execute(
         "INSERT INTO users (name, age) VALUES (?, ?)", (user.name, user.age)
     )
     connection.commit()
     connection.close()
 
+    # 2. НАДВИЛЬ БОТА: Відправляємо сповіщення в Telegram!
+    TELEGRAM_TOKEN = "8916527546:AAGzG2i9GZBCYlA9W7pmpiSZfdQLMC0uKUw"
+    MY_CHAT_ID = "6561129115"
+    text_message = (
+        f"🔔 Новий користувач на сайті!\n👤 Ім'я: {user.name}\n🎂 Вік: {user.age}"
+    )
+
+    # Формуємо запит до серверів Telegram
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": MY_CHAT_ID, "text": text_message}
+
+    try:
+        # Надсилаємо запит за допомогою бібліотеки requests
+        requests.post(telegram_url, json=payload)
+    except Exception as e:
+        print(f"Не вдалося надіслати сповіщення в Telegram: {e}")
+
     return {"status": "success", "message": f"Користувача {user.name} додано!"}
+# 📈 НОВИЙ МЕТОД: Запит до реального світового API курсу валют
+@app.get("/crypto-rate")
+def get_crypto_rate():
+    # Стукаємо до безкоштовного публічного API курсів валют
+    url = "https://open.er-api.com/v6/latest/EUR"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()
+        # Забираємо курс долара (USD) відносно євро
+        usd_rate = data["rates"]["USD"]
+        return {
+            "status": "success",
+            "currency": "EUR to USD",
+            "rate": usd_rate,
+        }
+    else:
+        return {"status": "error", "message": "Не вдалося отримати курс"}
