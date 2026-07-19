@@ -10,7 +10,6 @@ from pydantic import BaseModel
 TELEGRAM_TOKEN = "8916527546:AAGzG2i9GZBCYlA9W7pmpiSZfdQLMC0uKUw"
 MY_CHAT_ID = 6561129115  # Твій ID як число
 
-
 # Функція, яка буде постійно перевіряти нові повідомлення в Telegram
 async def check_telegram_messages():
     offset = 0
@@ -20,7 +19,6 @@ async def check_telegram_messages():
 
     while True:
         try:
-            # Запитуємо нові повідомлення (чекаємо до 10 секунд, якщо повідомлень немає)
             response = requests.get(
                 telegram_url, params={"offset": offset, "timeout": 10}
             )
@@ -32,17 +30,15 @@ async def check_telegram_messages():
                     chat_id = message.get("chat", {}).get("id")
                     text = message.get("text", "")
 
-                    # Перевіряємо, чи пише саме власник (ти) і яка команда прийшла
                     if chat_id == MY_CHAT_ID:
+                        # 1. СТАРА КОМАНДА: Перевірка статусу
                         if text == "/status":
-                            # Ідемо в базу даних рахувати користувачів
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
                             cursor.execute("SELECT COUNT(*) FROM users")
                             count = cursor.fetchone()[0]
                             connection.close()
 
-                            # Відправляємо відповідь назад у Telegram
                             reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
                             requests.post(
                                 reply_url,
@@ -52,12 +48,51 @@ async def check_telegram_messages():
                                 },
                             )
 
+                        # 2. НОВА КОМАНДА: Видалення за ID (наприклад, /delete 5)
+                        elif text.startswith("/delete "):
+                            # Розбиваємо текст по пробілу і беремо другу частину (ID)
+                            parts = text.split(" ")
+                            if len(parts) == 2 and parts[1].isdigit():
+                                user_id = int(parts[1])
+
+                                # Підключаємось до бази і видаляємо користувача
+                                connection = sqlite3.connect("my_database.db")
+                                cursor = connection.cursor()
+
+                                # Спочатку перевіримо, чи є взагалі такий юзер
+                                cursor.execute(
+                                    "SELECT name FROM users WHERE id = ?",
+                                    (user_id,),
+                                )
+                                user = cursor.fetchone()
+
+                                if user:
+                                    user_name = user[0]
+                                    # Видаляємо
+                                    cursor.execute(
+                                        "DELETE FROM users WHERE id = ?",
+                                        (user_id,),
+                                    )
+                                    connection.commit()
+                                    reply_text = f"🗑️ Користувача {user_name} (ID: {user_id}) успішно видалено з бази!"
+                                else:
+                                    reply_text = f"❓ Користувача з ID {user_id} не знайдено в базі даних."
+
+                                connection.close()
+                            else:
+                                reply_text = "⚠️ Неправильний формат! Пиши так: /delete [номер_ID]"
+
+                            # Надсилаємо відповідь у Telegram
+                            reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                            requests.post(
+                                reply_url,
+                                json={"chat_id": MY_CHAT_ID, "text": reply_text},
+                            )
+
         except Exception as e:
             print(f"Помилка бота: {e}")
 
-        # Невеликий перепочинок, щоб не перевантажувати процесор
         await asyncio.sleep(1)
-
 
 # Налаштовуємо FastAPI, щоб бот запускався одночасно з сервером
 @asynccontextmanager
