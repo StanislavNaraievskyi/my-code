@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мій FastAPI Фронтенд</title>
+    <title>Секретна Адмінка БД</title>
     <style>
         body {
             background-color: #121212;
@@ -36,6 +36,9 @@
             color: white;
             font-size: 14px;
         }
+        .pass-input {
+            border: 1px solid #ff4444;
+        }
         button {
             background-color: #00ff88;
             color: #121212;
@@ -62,24 +65,32 @@
 <body>
 
     <div class="card">
-        <h1>Керування БД </h1>
+        <h1>Секретна Адмінка </h1>
         
-        <!-- Форма для введення даних -->
+        <!-- Поле пароля -->
+        <input type="password" id="adminPassword" class="pass-input" placeholder=" Введіть пароль адміна">
+        <hr style="border: 0.5px solid #333; margin: 15px 0;">
+
+        <!-- Форма даних -->
         <input type="text" id="userName" placeholder="Введіть ім'я">
         <input type="number" id="userAge" placeholder="Введіть вік">
         <button onclick="sendUser()">Додати в базу</button>
         
-        <!-- Кнопка для оновлення списку -->
         <button class="btn-load" onclick="loadUsers()">Показати всіх з бази</button>
         
-        <div id="result">Тут з'явиться результат...</div>
+        <div id="result">Введіть пароль та натисніть кнопку...</div>
     </div>
 
     <script>
-        // Функція для відправки нового користувача
         async function sendUser() {
+            let password = document.getElementById('adminPassword').value;
             let name = document.getElementById('userName').value;
             let age = document.getElementById('userAge').value;
+
+            if(!password) {
+                alert("Введіть пароль адміна!");
+                return;
+            }
 
             if(!name || !age) {
                 alert("Заповни всі поля!");
@@ -89,27 +100,50 @@
             try {
                 let response = await fetch('http://127.0.0.1:8000/add-user', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-Password': password  // Передаємо пароль
+                    },
                     body: JSON.stringify({ name: name, age: parseInt(age) })
                 });
+
                 let data = await response.json();
-                
-                document.getElementById('result').innerText = data.message;
-                // Очищаємо поля після відправки
-                document.getElementById('userName').value = '';
-                document.getElementById('userAge').value = '';
+
+                if (response.status === 401) {
+                    document.getElementById('result').innerText = " Помилка: " + data.detail;
+                } else {
+                    document.getElementById('result').innerText = data.message;
+                    document.getElementById('userName').value = '';
+                    document.getElementById('userAge').value = '';
+                }
             } catch (error) {
                 document.getElementById('result').innerText = "Помилка відправки!";
             }
         }
 
-        // Функція для завантаження списку (вже знайома тобі)
         async function loadUsers() {
+            let password = document.getElementById('adminPassword').value;
+
+            if(!password) {
+                alert("Введіть пароль адміна!");
+                return;
+            }
+
             try {
-                let response = await fetch('http://127.0.0.1:8000/users');
+                let response = await fetch('http://127.0.0.1:8000/users', {
+                    headers: {
+                        'X-Password': password  // Передаємо пароль
+                    }
+                });
+
                 let data = await response.json();
-                let usersList = data.users_in_database.map(user => `ID: ${user[0]} — ${user[1]} (${user[2]} років)`).join('<br>');
-                document.getElementById('result').innerHTML = usersList;
+
+                if (response.status === 401) {
+                    document.getElementById('result').innerText = " Помилка: " + data.detail;
+                } else {
+                    let usersList = data.users_in_database.map(user => `ID: ${user[0]} — ${user[1]} (${user[2]} років)`).join('<br>');
+                    document.getElementById('result').innerHTML = usersList;
+                }
             } catch (error) {
                 document.getElementById('result').innerText = "Помилка завантаження!";
             }
