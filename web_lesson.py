@@ -12,52 +12,52 @@ import requests
 TELEGRAM_TOKEN = "8916527546:AAGzG2i9GZBCYlA9W7pmpiSZfdQLMC0uKUw"
 MY_CHAT_ID = 6561129115
 
-# 🔑 Пароль адміна у відкритому вигляді для порівняння
 RAW_PASSWORD = "stas_secret_pass"
-# Генеруємо еталонний SHA-256 хеш пароля
 ADMIN_PASSWORD_HASH = hashlib.sha256(RAW_PASSWORD.encode("utf-8")).hexdigest()
 
 
-# 🔐 Функція автентифікації за хешем
 def check_auth(x_password: str = Header(None)):
     if not x_password:
         raise HTTPException(
             status_code=401, detail="Пароль не надано у заголовках!"
         )
 
-    # Видаляємо випадкові пробіли чи лапки
     clean_pass = x_password.strip().strip('"').strip("'")
-    # Перетворюємо введений пароль у хеш
     user_hash = hashlib.sha256(clean_pass.encode("utf-8")).hexdigest()
 
-    # Порівнюємо зашифровані хеші
     if user_hash != ADMIN_PASSWORD_HASH:
         raise HTTPException(
             status_code=401, detail="Невірний пароль доступу!"
         )
 
 
-# 🛠️ Створення двох пов'язаних таблиць у БД
+# 🛠️ Створення оновленої структури БД
 def init_db():
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
 
+    # Таблиця користувачів з поштою та датою реєстрації
     cursor.execute(
         """
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        age INTEGER NOT NULL
+        age INTEGER NOT NULL,
+        email TEXT DEFAULT 'не вказано',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """
     )
 
+    # Таблиця замовлень зі статусом та датою створення
     cursor.execute(
         """
     CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         item_name TEXT NOT NULL,
         price REAL NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         user_id INTEGER NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
     )
@@ -68,7 +68,6 @@ def init_db():
     connection.close()
 
 
-# 🤖 Telegram-бот
 async def check_telegram_messages():
     offset = 0
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -87,7 +86,6 @@ async def check_telegram_messages():
                     text = message.get("text", "")
 
                     if chat_id == MY_CHAT_ID:
-                        # 📊 Звіт по кількості записів
                         if text == "/status":
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
@@ -106,15 +104,16 @@ async def check_telegram_messages():
                                 },
                             )
 
-                        # 📁 Експорт звітів у CSV
                         elif text == "/export":
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
                             cursor.execute(
                                 """
-                                SELECT users.id, users.name, users.age, 
+                                SELECT users.id, users.name, users.age, users.email, users.created_at,
                                        IFNULL(orders.item_name, 'Немає покупок'), 
-                                       IFNULL(orders.price, 0)
+                                       IFNULL(orders.price, 0),
+                                       IFNULL(orders.status, '-'),
+                                       IFNULL(orders.created_at, '-')
                                 FROM users
                                 LEFT JOIN orders ON users.id = orders.user_id
                             """
@@ -132,8 +131,12 @@ async def check_telegram_messages():
                                         "User ID",
                                         "Name",
                                         "Age",
+                                        "Email",
+                                        "User Created",
                                         "Item Name",
                                         "Price ($)",
+                                        "Order Status",
+                                        "Order Date",
                                     ]
                                 )
                                 writer.writerows(rows)
@@ -149,7 +152,6 @@ async def check_telegram_messages():
                             if os.path.exists(filename):
                                 os.remove(filename)
 
-                        # 🗑️ Видалення запису
                         elif text.startswith("/delete "):
                             parts = text.split(" ")
                             if len(parts) == 2 and parts[1].isdigit():
@@ -212,18 +214,21 @@ app.add_middleware(
 )
 
 
+# Оновлена Pydantic-модель для користувача
 class UserInput(BaseModel):
     name: str
     age: int
+    email: str = "не вказано"
 
 
+# Оновлена Pydantic-модель для замовлення
 class OrderInput(BaseModel):
     item_name: str
     price: float
     user_id: int
+    status: str = "pending"
 
 
-# 🔍 Ендпоінт отримання користувачів та їх покупок
 @app.get("/users")
 def get_users_from_db(x_password: str = Header(None)):
     check_auth(x_password)
@@ -232,7 +237,8 @@ def get_users_from_db(x_password: str = Header(None)):
     cursor = connection.cursor()
     cursor.execute(
         """
-        SELECT users.id, users.name, users.age, orders.item_name, orders.price
+        SELECT users.id, users.name, users.age, users.email, users.created_at,
+               orders.item_name, orders.price, orders.status, orders.created_at
         FROM users
         LEFT JOIN orders ON users.id = orders.user_id
     """
@@ -242,7 +248,6 @@ def get_users_from_db(x_password: str = Header(None)):
     return {"users_and_orders": data}
 
 
-# 👤 Ендпоінт додавання користувача
 @app.post("/add-user")
 def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     check_auth(x_password)
@@ -250,12 +255,13 @@ def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
     cursor.execute(
-        "INSERT INTO users (name, age) VALUES (?, ?)", (user.name, user.age)
+        "INSERT INTO users (name, age, email) VALUES (?, ?, ?)",
+        (user.name, user.age, user.email),
     )
     connection.commit()
     connection.close()
 
-    text_message = f"🔔 Новий користувач!\n👤 Ім'я: {user.name}\n🎂 Вік: {user.age}"
+    text_message = f"🔔 Новий користувач!\n👤 Ім'я: {user.name}\n🎂 Вік: {user.age}\n📧 Email: {user.email}"
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(
         telegram_url, json={"chat_id": MY_CHAT_ID, "text": text_message}
@@ -264,7 +270,6 @@ def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     return {"status": "success", "message": f"Користувача {user.name} додано!"}
 
 
-# 🛒 Ендпоінт додавання покупки
 @app.post("/add-order")
 def add_order_to_db(order: OrderInput, x_password: str = Header(None)):
     check_auth(x_password)
@@ -282,13 +287,13 @@ def add_order_to_db(order: OrderInput, x_password: str = Header(None)):
         )
 
     cursor.execute(
-        "INSERT INTO orders (item_name, price, user_id) VALUES (?, ?, ?)",
-        (order.item_name, order.price, order.user_id),
+        "INSERT INTO orders (item_name, price, user_id, status) VALUES (?, ?, ?, ?)",
+        (order.item_name, order.price, order.user_id, order.status),
     )
     connection.commit()
     connection.close()
 
     return {
         "status": "success",
-        "message": f"Товар '{order.item_name}' за ${order.price} додано до {user[0]}!",
+        "message": f"Товар '{order.item_name}' за ${order.price} ({order.status}) додано до {user[0]}!",
     }
