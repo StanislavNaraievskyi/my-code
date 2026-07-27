@@ -3,184 +3,279 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Секретна Адмінка БД v2.0</title>
+    <title>Адмін-Панель | База Даних</title>
     <style>
         body {
-            background-color: #121212;
-            color: #ffffff;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+            margin: 0;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px 0;
         }
+
+        h1, h2 {
+            color: #89b4fa;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+        }
+
         .card {
-            background-color: #1e1e1e;
-            padding: 25px;
+            background-color: #313244;
+            padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            text-align: center;
-            border: 1px solid #333;
-            width: 380px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
         }
-        h1 { color: #00ff88; margin-bottom: 20px; font-size: 22px; }
-        input {
-            width: 90%;
+
+        .form-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        input, select {
             padding: 10px;
-            margin: 6px 0;
             border-radius: 6px;
-            border: 1px solid #444;
-            background-color: #252525;
-            color: white;
+            border: 1px solid #45475a;
+            background-color: #181825;
+            color: #cdd6f4;
             font-size: 14px;
+            flex: 1;
+            min-width: 130px;
         }
-        .pass-input {
-            border: 1px solid #ff4444;
-        }
+
         button {
-            background-color: #00ff88;
-            color: #121212;
-            border: none;
             padding: 10px 20px;
-            font-size: 15px;
-            font-weight: bold;
+            border: none;
             border-radius: 6px;
+            background-color: #89b4fa;
+            color: #11111b;
+            font-weight: bold;
             cursor: pointer;
-            transition: 0.2s;
-            width: 95%;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #b4befe;
+        }
+
+        .btn-refresh {
+            background-color: #a6e3a1;
+            margin-bottom: 15px;
+        }
+
+        .btn-refresh:hover {
+            background-color: #94e2d5;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 10px;
         }
-        button:hover { background-color: #00cc6e; }
-        .btn-load {
-            background-color: #333;
-            color: #fff;
-            margin-top: 15px;
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #45475a;
         }
-        .btn-load:hover { background-color: #444; }
-        #result { margin-top: 20px; font-size: 13px; color: #d0d0d0; text-align: left; line-height: 1.6; }
-        .user-block { background: #282828; padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #00ff88; }
-        .badge { background: #444; padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #ffcc00; }
+
+        th {
+            background-color: #181825;
+            color: #89b4fa;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-pending { background-color: #f9e2af; color: #11111b; }
+        .status-completed { background-color: #a6e3a1; color: #11111b; }
+        .status-cancelled { background-color: #f38ba8; color: #11111b; }
+
+        #response-msg {
+            margin-top: 10px;
+            font-weight: bold;
+            color: #a6e3a1;
+        }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h1>Секретна Адмінка БД v2.0 🔐</h1>
-        
-        <input type="password" id="adminPassword" class="pass-input" placeholder="🔑 Введіть пароль адміна">
-        <hr style="border: 0.5px solid #333; margin: 15px 0;">
+<div class="container">
+    <h1>🚀 Управління Базою Даних</h1>
 
-        <input type="text" id="userName" placeholder="Введіть ім'я">
-        <input type="number" id="userAge" placeholder="Введіть вік">
-        <input type="email" id="userEmail" placeholder="Введіть Email (необов'язково)">
-        <button onclick="sendUser()">Додати користувача</button>
-        
-        <button class="btn-load" onclick="loadUsers()">Показати всіх з бази</button>
-        
-        <div id="result">Введіть пароль та натисніть кнопку...</div>
+    <!-- 👤 Форма додавання користувача -->
+    <div class="card">
+        <h2>👤 Додати нове ім'я (User)</h2>
+        <div class="form-group">
+            <input type="text" id="user-name" placeholder="Ім'я" required>
+            <input type="number" id="user-age" placeholder="Вік" required>
+            <input type="email" id="user-email" placeholder="Email">
+            <button onclick="addUser()">Додати користувача</button>
+        </div>
     </div>
 
-    <script>
-        const API_URL = "https://my-code-pathon.onrender.com";
+    <!-- 🛒 Форма додавання замовлення -->
+    <div class="card">
+        <h2>🛒 Додати нове замовлення (Order)</h2>
+        <div class="form-group">
+            <input type="number" id="order-user-id" placeholder="ID Користувача" required>
+            <input type="text" id="order-item" placeholder="Назва товару (напр. Mouse)" required>
+            <input type="number" step="0.01" id="order-price" placeholder="Ціна ($)" required>
+            <select id="order-status">
+                <option value="pending">pending (очікує)</option>
+                <option value="completed">completed (виконано)</option>
+                <option value="cancelled">cancelled (скасовано)</option>
+            </select>
+            <button onclick="addOrder()">Додати замовлення</button>
+        </div>
+    </div>
 
-        async function sendUser() {
-            let password = document.getElementById('adminPassword').value.trim();
-            let name = document.getElementById('userName').value;
-            let age = document.getElementById('userAge').value;
-            let email = document.getElementById('userEmail').value;
+    <div id="response-msg"></div>
 
-            if(!password) {
-                alert("Введіть пароль адміна!");
+    <!-- 📊 Таблиця даних -->
+    <div class="card">
+        <h2>📊 Користувачі та їх замовлення</h2>
+        <button class="btn-refresh" onclick="loadData()">🔄 Оновити таблицю</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Ім'я</th>
+                    <th>Email</th>
+                    <th>Товар</th>
+                    <th>Ціна</th>
+                    <th>Статус</th>
+                </tr>
+            </thead>
+            <tbody id="data-table">
+                <tr><td colspan="6">Завантаження даних...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const API_URL = "https://my-code-pathon.onrender.com"; // Переконайся, що URL співпадає з твоїм Render
+    const PASSWORD = "stas_secret_pass";
+
+    async function loadData() {
+        try {
+            const res = await fetch(`${API_URL}/users`, {
+                headers: { "x-password": PASSWORD }
+            });
+            const data = await res.json();
+            
+            const tbody = document.getElementById("data-table");
+            tbody.innerHTML = "";
+
+            if (!data.users_and_orders || data.users_and_orders.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6">База даних порожня</td></tr>`;
                 return;
             }
 
-            if(!name || !age) {
-                alert("Заповніть ім'я та вік!");
-                return;
-            }
+            data.users_and_orders.forEach(row => {
+                const userId = row[0];
+                const name = row[1];
+                const email = row[3];
+                const item = row[5] || '—';
+                const price = row[6] ? `$${row[6]}` : '—';
+                const status = row[7] || '—';
 
-            try {
-                let response = await fetch(`${API_URL}/add-user`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'X-Password': password
-                    },
-                    body: JSON.stringify({ 
-                        name: name, 
-                        age: parseInt(age),
-                        email: email ? email : "не вказано"
-                    })
-                });
+                let statusClass = '';
+                if (status === 'pending') statusClass = 'status-pending';
+                else if (status === 'completed') statusClass = 'status-completed';
+                else if (status === 'cancelled') statusClass = 'status-cancelled';
 
-                let data = await response.json();
+                tbody.innerHTML += `
+                    <tr>
+                        <td><b>${userId}</b></td>
+                        <td>${name}</td>
+                        <td>${email}</td>
+                        <td>${item}</td>
+                        <td>${price}</td>
+                        <td><span class="status-badge ${statusClass}">${status}</span></td>
+                    </tr>
+                `;
+            });
+        } catch (err) {
+            console.error(err);
+            document.getElementById("data-table").innerHTML = `<tr><td colspan="6" style="color:#f38ba8">Помилка завантаження даних</td></tr>`;
+        }
+    }
 
-                if (response.status === 401) {
-                    document.getElementById('result').innerText = "❌ Помилка: " + data.detail;
-                } else {
-                    document.getElementById('result').innerText = "✅ " + data.message;
-                    document.getElementById('userName').value = '';
-                    document.getElementById('userAge').value = '';
-                    document.getElementById('userEmail').value = '';
-                }
-            } catch (error) {
-                document.getElementById('result').innerText = "❌ Помилка відправки!";
-            }
+    async function addUser() {
+        const name = document.getElementById("user-name").value;
+        const age = document.getElementById("user-age").value;
+        const email = document.getElementById("user-email").value || "не вказано";
+
+        if (!name || !age) {
+            alert("Заповни ім'я та вік!");
+            return;
         }
 
-        async function loadUsers() {
-            let password = document.getElementById('adminPassword').value.trim();
+        const res = await fetch(`${API_URL}/add-user`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-password": PASSWORD
+            },
+            body: JSON.stringify({ name, age: parseInt(age), email })
+        });
 
-            if(!password) {
-                alert("Введіть пароль адміна!");
-                return;
-            }
+        const result = await res.json();
+        document.getElementById("response-msg").innerText = result.message || "Користувача додано!";
+        loadData();
+    }
 
-            try {
-                let response = await fetch(`${API_URL}/users`, {
-                    headers: {
-                        'X-Password': password
-                    }
-                });
+    async function addOrder() {
+        const userId = document.getElementById("order-user-id").value;
+        const item = document.getElementById("order-item").value;
+        const price = document.getElementById("order-price").value;
+        const status = document.getElementById("order-status").value;
 
-                let data = await response.json();
-
-                if (response.status === 401) {
-                    document.getElementById('result').innerText = "❌ Помилка: " + data.detail;
-                } else {
-                    if (data.users_and_orders.length === 0) {
-                        document.getElementById('result').innerText = "База даних порожня.";
-                        return;
-                    }
-
-                    let usersList = data.users_and_orders.map(user => {
-                        // user[0] = ID, user[1] = Name, user[2] = Age, user[3] = Email, user[4] = User Date
-                        // user[5] = Item Name, user[6] = Price, user[7] = Status, user[8] = Order Date
-                        let userDate = user[4] ? user[4].split('.')[0] : '-';
-                        let orderInfo = user[5] ? 
-                            `<br>└ 🛒 <b>${user[5]}</b> ($${user[6]}) <span class="badge">${user[7]}</span>` : 
-                            '<br>└ <i>Немає покупок</i>';
-
-                        return `
-                            <div class="user-block">
-                                <b>ID: ${user[0]}</b> — <b>${user[1]}</b> (${user[2]} р.)<br>
-                                📧 ${user[3]}<br>
-                                📅 <small>Створено: ${userDate}</small>
-                                ${orderInfo}
-                            </div>
-                        `;
-                    }).join('');
-
-                    document.getElementById('result').innerHTML = usersList;
-                }
-            } catch (error) {
-                document.getElementById('result').innerText = "❌ Помилка завантаження!";
-            }
+        if (!userId || !item || !price) {
+            alert("Заповни ID користувача, товар та ціну!");
+            return;
         }
-    </script>
+
+        const res = await fetch(`${API_URL}/add-order`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-password": PASSWORD
+            },
+            body: JSON.stringify({
+                user_id: parseInt(userId),
+                item_name: item,
+                price: parseFloat(price),
+                status: status
+            })
+        });
+
+        const result = await res.json();
+        if (res.ok) {
+            document.getElementById("response-msg").innerText = result.message;
+            loadData();
+        } else {
+            alert(result.detail || "Помилка додавання замовлення");
+        }
+    }
+
+    // Автоматично завантажуємо дані при відкритті сторінки
+    loadData();
+</script>
 
 </body>
 </html>
