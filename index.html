@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Секретна Адмінка БД</title>
+    <title>Секретна Адмінка БД v2.0</title>
     <style>
         body {
             background-color: #121212;
@@ -15,6 +15,7 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
+            padding: 20px 0;
         }
         .card {
             background-color: #1e1e1e;
@@ -23,13 +24,13 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             text-align: center;
             border: 1px solid #333;
-            width: 360px;
+            width: 380px;
         }
         h1 { color: #00ff88; margin-bottom: 20px; font-size: 22px; }
         input {
             width: 90%;
             padding: 10px;
-            margin: 8px 0;
+            margin: 6px 0;
             border-radius: 6px;
             border: 1px solid #444;
             background-color: #252525;
@@ -59,20 +60,23 @@
             margin-top: 15px;
         }
         .btn-load:hover { background-color: #444; }
-        #result { margin-top: 20px; font-size: 14px; color: #a0a0a0; text-align: left; line-height: 1.6; }
+        #result { margin-top: 20px; font-size: 13px; color: #d0d0d0; text-align: left; line-height: 1.6; }
+        .user-block { background: #282828; padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #00ff88; }
+        .badge { background: #444; padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #ffcc00; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h1>Секретна Адмінка 🔐</h1>
+        <h1>Секретна Адмінка БД v2.0 🔐</h1>
         
         <input type="password" id="adminPassword" class="pass-input" placeholder="🔑 Введіть пароль адміна">
         <hr style="border: 0.5px solid #333; margin: 15px 0;">
 
         <input type="text" id="userName" placeholder="Введіть ім'я">
         <input type="number" id="userAge" placeholder="Введіть вік">
-        <button onclick="sendUser()">Додати в базу</button>
+        <input type="email" id="userEmail" placeholder="Введіть Email (необов'язково)">
+        <button onclick="sendUser()">Додати користувача</button>
         
         <button class="btn-load" onclick="loadUsers()">Показати всіх з бази</button>
         
@@ -80,13 +84,13 @@
     </div>
 
     <script>
-        // 🌐 Адреса нашого хмарного сервера на Render
         const API_URL = "https://my-code-pathon.onrender.com";
 
         async function sendUser() {
             let password = document.getElementById('adminPassword').value.trim();
             let name = document.getElementById('userName').value;
             let age = document.getElementById('userAge').value;
+            let email = document.getElementById('userEmail').value;
 
             if(!password) {
                 alert("Введіть пароль адміна!");
@@ -94,7 +98,7 @@
             }
 
             if(!name || !age) {
-                alert("Заповни всі поля!");
+                alert("Заповніть ім'я та вік!");
                 return;
             }
 
@@ -105,7 +109,11 @@
                         'Content-Type': 'application/json',
                         'X-Password': password
                     },
-                    body: JSON.stringify({ name: name, age: parseInt(age) })
+                    body: JSON.stringify({ 
+                        name: name, 
+                        age: parseInt(age),
+                        email: email ? email : "не вказано"
+                    })
                 });
 
                 let data = await response.json();
@@ -116,6 +124,7 @@
                     document.getElementById('result').innerText = "✅ " + data.message;
                     document.getElementById('userName').value = '';
                     document.getElementById('userAge').value = '';
+                    document.getElementById('userEmail').value = '';
                 }
             } catch (error) {
                 document.getElementById('result').innerText = "❌ Помилка відправки!";
@@ -148,9 +157,22 @@
                     }
 
                     let usersList = data.users_and_orders.map(user => {
-                        let orderInfo = user[3] ? `<br> └ 🛒 <i>${user[3]} ($${user[4]})</i>` : '';
-                        return `<b>ID: ${user[0]}</b> — ${user[1]} (${user[2]} років)${orderInfo}`;
-                    }).join('<br><br>');
+                        // user[0] = ID, user[1] = Name, user[2] = Age, user[3] = Email, user[4] = User Date
+                        // user[5] = Item Name, user[6] = Price, user[7] = Status, user[8] = Order Date
+                        let userDate = user[4] ? user[4].split('.')[0] : '-';
+                        let orderInfo = user[5] ? 
+                            `<br>└ 🛒 <b>${user[5]}</b> ($${user[6]}) <span class="badge">${user[7]}</span>` : 
+                            '<br>└ <i>Немає покупок</i>';
+
+                        return `
+                            <div class="user-block">
+                                <b>ID: ${user[0]}</b> — <b>${user[1]}</b> (${user[2]} р.)<br>
+                                📧 ${user[3]}<br>
+                                📅 <small>Створено: ${userDate}</small>
+                                ${orderInfo}
+                            </div>
+                        `;
+                    }).join('');
 
                     document.getElementById('result').innerHTML = usersList;
                 }
