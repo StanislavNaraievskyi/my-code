@@ -9,9 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 
+# 🔑 Токен бота та твій Chat ID
 TELEGRAM_TOKEN = "8916527546:AAGzG2i9GZBCYlA9W7pmpiSZfdQLMC0uKUw"
 MY_CHAT_ID = 6561129115
 
+# 🔐 Налаштування безпеки (Хешування SHA-256)
 RAW_PASSWORD = "stas_secret_pass"
 ADMIN_PASSWORD_HASH = hashlib.sha256(RAW_PASSWORD.encode("utf-8")).hexdigest()
 
@@ -31,7 +33,7 @@ def check_auth(x_password: str = Header(None)):
         )
 
 
-# 🛠️ Створення оновленої структури БД
+# 🛠️ Створення розширеної структури БД
 def init_db():
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
@@ -68,6 +70,7 @@ def init_db():
     connection.close()
 
 
+# 🤖 Telegram-бот із кнопковим меню та виправленим експортом
 async def check_telegram_messages():
     offset = 0
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -80,53 +83,38 @@ async def check_telegram_messages():
             if response.status_code == 200:
                 data = response.json()
                 for update in data.get("result", []):
+                    # Гарантовано оновлюємо offset для уникнення дублювання
                     offset = update["update_id"] + 1
+
                     message = update.get("message", {})
                     chat_id = message.get("chat", {}).get("id")
                     text = message.get("text", "")
 
                     if chat_id == MY_CHAT_ID:
-                        if text == "/status":
-                            connection = sqlite3.connect("my_database.db")
-                            cursor = connection.cursor()
-                            cursor.execute("SELECT COUNT(*) FROM users")
-                            users_count = cursor.fetchone()[0]
-                            cursor.execute("SELECT COUNT(*) FROM orders")
-                            orders_count = cursor.fetchone()[0]
-                            connection.close()
-
+                        # 🚀 Привітання та створення кнопок
+                        if text == "/start":
+                            keyboard = {
+                                "keyboard": [
+                                    [
+                                        {"text": "📊 Статус БД"},
+                                        {"text": "📁 Завантажити CSV"},
+                                    ],
+                                    [{"text": "ℹ️ Довідка"}],
+                                ],
+                                "resize_keyboard": True,
+                            }
                             reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
                             requests.post(
                                 reply_url,
                                 json={
                                     "chat_id": MY_CHAT_ID,
-                                    "text": f"📊 Звіт по БД:\n👤 Користувачів: {users_count}\n🛒 Замовлень: {orders_count}",
+                                    "text": "Вітаю в адмін-панелі! Обирай дію на кнопках нижче 👇",
+                                    "reply_markup": keyboard,
                                 },
                             )
 
-                        # 🤖 Оновлений Telegram-бот (без дублювання файлів)
-async def check_telegram_messages():
-    offset = 0
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-
-    while True:
-        try:
-            response = requests.get(
-                telegram_url, params={"offset": offset, "timeout": 10}
-            )
-            if response.status_code == 200:
-                data = response.json()
-                for update in data.get("result", []):
-                    # Гарантовано оновлюємо offset, щоб не обробляти одне повідомлення двічі
-                    offset = update["update_id"] + 1
-
-                    message = update.get("message", {})
-                    chat_id = message.get("chat", {}).get("id")
-                    text = message.get("text", "")
-
-                    if chat_id == MY_CHAT_ID:
                         # 📊 Звіт по кількості
-                        if text == "/status":
+                        elif text in ["/status", "📊 Статус БД"]:
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
                             cursor.execute("SELECT COUNT(*) FROM users")
@@ -144,8 +132,8 @@ async def check_telegram_messages():
                                 },
                             )
 
-                        # 📁 Експорт у CSV (лише 1 файл!)
-                        elif text == "/export":
+                        # 📁 Експорт у CSV (рівно 1 файл)
+                        elif text in ["/export", "📁 Завантажити CSV"]:
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
                             cursor.execute(
@@ -164,7 +152,7 @@ async def check_telegram_messages():
 
                             filename = "database_report.csv"
 
-                            # 1. Записуємо дані та ОБОВ'ЯЗКОВО закриваємо файл перед відправкою
+                            # 1. Записуємо та закриваємо файл
                             with open(
                                 filename, mode="w", newline="", encoding="utf-8"
                             ) as file:
@@ -184,7 +172,7 @@ async def check_telegram_messages():
                                 )
                                 writer.writerows(rows)
 
-                            # 2. Відправляємо ТІЛЬКИ ОДИН РАЗ
+                            # 2. Відправляємо файл у Telegram
                             doc_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
                             with open(filename, "rb") as file_to_send:
                                 requests.post(
@@ -193,11 +181,29 @@ async def check_telegram_messages():
                                     files={"document": file_to_send},
                                 )
 
-                            # 3. Видаляємо тимчасовий файл
+                            # 3. Видаляємо тимчасовий файл з диска
                             if os.path.exists(filename):
                                 os.remove(filename)
 
-                        # 🗑️ Видалення запису
+                        # ℹ️ Інструкція
+                        elif text == "ℹ️ Довідка":
+                            help_text = (
+                                "🛠 **Доступні команди:**\n\n"
+                                "• Натискай кнопки меню для швидких звітів.\n"
+                                "• Щоб видалити користувача, набери: `/delete [ID]`\n"
+                                "*(наприклад: `/delete 3`)*"
+                            )
+                            reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                            requests.post(
+                                reply_url,
+                                json={
+                                    "chat_id": MY_CHAT_ID,
+                                    "text": help_text,
+                                    "parse_mode": "Markdown",
+                                },
+                            )
+
+                        # 🗑️ Видалення користувача
                         elif text.startswith("/delete "):
                             parts = text.split(" ")
                             if len(parts) == 2 and parts[1].isdigit():
@@ -241,6 +247,7 @@ async def check_telegram_messages():
 
         await asyncio.sleep(1)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -259,14 +266,13 @@ app.add_middleware(
 )
 
 
-# Оновлена Pydantic-модель для користувача
+# Pydantic-моделі для валідації запитів
 class UserInput(BaseModel):
     name: str
     age: int
     email: str = "не вказано"
 
 
-# Оновлена Pydantic-модель для замовлення
 class OrderInput(BaseModel):
     item_name: str
     price: float
@@ -274,6 +280,7 @@ class OrderInput(BaseModel):
     status: str = "pending"
 
 
+# 🔍 Отримання списку користувачів та їх замовлень
 @app.get("/users")
 def get_users_from_db(x_password: str = Header(None)):
     check_auth(x_password)
@@ -293,6 +300,7 @@ def get_users_from_db(x_password: str = Header(None)):
     return {"users_and_orders": data}
 
 
+# 👤 Додавання нового користувача
 @app.post("/add-user")
 def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     check_auth(x_password)
@@ -315,6 +323,7 @@ def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     return {"status": "success", "message": f"Користувача {user.name} додано!"}
 
 
+# 🛒 Додавання замовлення
 @app.post("/add-order")
 def add_order_to_db(order: OrderInput, x_password: str = Header(None)):
     check_auth(x_password)
