@@ -70,7 +70,7 @@ def init_db():
     connection.close()
 
 
-# 🤖 Telegram-бот із кнопковим меню та виправленим експортом
+# 🤖 Оновлений Telegram-бот без дублювання запитів
 async def check_telegram_messages():
     offset = 0
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -83,7 +83,7 @@ async def check_telegram_messages():
             if response.status_code == 200:
                 data = response.json()
                 for update in data.get("result", []):
-                    # Гарантовано оновлюємо offset для уникнення дублювання
+                    # 💡 Ключове виправлення: ми ОДРАЗУ зсуваємо offset у Telegram
                     offset = update["update_id"] + 1
 
                     message = update.get("message", {})
@@ -152,7 +152,6 @@ async def check_telegram_messages():
 
                             filename = "database_report.csv"
 
-                            # 1. Записуємо та закриваємо файл
                             with open(
                                 filename, mode="w", newline="", encoding="utf-8"
                             ) as file:
@@ -172,7 +171,6 @@ async def check_telegram_messages():
                                 )
                                 writer.writerows(rows)
 
-                            # 2. Відправляємо файл у Telegram
                             doc_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
                             with open(filename, "rb") as file_to_send:
                                 requests.post(
@@ -181,7 +179,6 @@ async def check_telegram_messages():
                                     files={"document": file_to_send},
                                 )
 
-                            # 3. Видаляємо тимчасовий файл з диска
                             if os.path.exists(filename):
                                 os.remove(filename)
 
@@ -203,7 +200,7 @@ async def check_telegram_messages():
                                 },
                             )
 
-                        # 🗑️ Видалення користувача
+                        # 🗑️ Видалення запису
                         elif text.startswith("/delete "):
                             parts = text.split(" ")
                             if len(parts) == 2 and parts[1].isdigit():
