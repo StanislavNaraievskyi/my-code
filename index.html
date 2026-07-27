@@ -80,6 +80,9 @@
     </div>
 
     <script>
+        // 🌐 Адреса нашого хмарного сервера на Render
+        const API_URL = "https://my-code-pathon.onrender.com";
+
         async function sendUser() {
             let password = document.getElementById('adminPassword').value.trim();
             let name = document.getElementById('userName').value;
@@ -96,7 +99,7 @@
             }
 
             try {
-                let response = await fetch('http://127.0.0.1:8000/add-user', {
+                let response = await fetch(`${API_URL}/add-user`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -128,7 +131,7 @@
             }
 
             try {
-                let response = await fetch('http://127.0.0.1:8000/users', {
+                let response = await fetch(`${API_URL}/users`, {
                     headers: {
                         'X-Password': password
                     }
