@@ -104,6 +104,47 @@ async def check_telegram_messages():
                                 },
                             )
 
+                        # 🤖 Оновлений Telegram-бот (без дублювання файлів)
+async def check_telegram_messages():
+    offset = 0
+    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+
+    while True:
+        try:
+            response = requests.get(
+                telegram_url, params={"offset": offset, "timeout": 10}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                for update in data.get("result", []):
+                    # Гарантовано оновлюємо offset, щоб не обробляти одне повідомлення двічі
+                    offset = update["update_id"] + 1
+
+                    message = update.get("message", {})
+                    chat_id = message.get("chat", {}).get("id")
+                    text = message.get("text", "")
+
+                    if chat_id == MY_CHAT_ID:
+                        # 📊 Звіт по кількості
+                        if text == "/status":
+                            connection = sqlite3.connect("my_database.db")
+                            cursor = connection.cursor()
+                            cursor.execute("SELECT COUNT(*) FROM users")
+                            users_count = cursor.fetchone()[0]
+                            cursor.execute("SELECT COUNT(*) FROM orders")
+                            orders_count = cursor.fetchone()[0]
+                            connection.close()
+
+                            reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                            requests.post(
+                                reply_url,
+                                json={
+                                    "chat_id": MY_CHAT_ID,
+                                    "text": f"📊 Звіт по БД:\n👤 Користувачів: {users_count}\n🛒 Замовлень: {orders_count}",
+                                },
+                            )
+
+                        # 📁 Експорт у CSV (лише 1 файл!)
                         elif text == "/export":
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
@@ -122,6 +163,8 @@ async def check_telegram_messages():
                             connection.close()
 
                             filename = "database_report.csv"
+
+                            # 1. Записуємо дані та ОБОВ'ЯЗКОВО закриваємо файл перед відправкою
                             with open(
                                 filename, mode="w", newline="", encoding="utf-8"
                             ) as file:
@@ -141,6 +184,7 @@ async def check_telegram_messages():
                                 )
                                 writer.writerows(rows)
 
+                            # 2. Відправляємо ТІЛЬКИ ОДИН РАЗ
                             doc_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
                             with open(filename, "rb") as file_to_send:
                                 requests.post(
@@ -149,9 +193,11 @@ async def check_telegram_messages():
                                     files={"document": file_to_send},
                                 )
 
+                            # 3. Видаляємо тимчасовий файл
                             if os.path.exists(filename):
                                 os.remove(filename)
 
+                        # 🗑️ Видалення запису
                         elif text.startswith("/delete "):
                             parts = text.split(" ")
                             if len(parts) == 2 and parts[1].isdigit():
@@ -194,7 +240,6 @@ async def check_telegram_messages():
             print(f"Помилка бота: {e}")
 
         await asyncio.sleep(1)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
