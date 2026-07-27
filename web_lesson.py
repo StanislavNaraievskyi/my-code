@@ -8,16 +8,45 @@ import requests
 
 TELEGRAM_TOKEN = "8916527546:AAGzG2i9GZBCYlA9W7pmpiSZfdQLMC0uKUw"
 MY_CHAT_ID = 6561129115
-
-#  Секретний пароль адміна
 ADMIN_PASSWORD = "stas_secret_pass"
+
+
+# 🛠️ Створення/ініціалізація баз даних при запуску
+def init_db():
+    connection = sqlite3.connect("my_database.db")
+    cursor = connection.cursor()
+
+    # Таблиця користувачів
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        age INTEGER NOT NULL
+    )
+    """
+    )
+
+    # Нова таблиця замовлень із зовнішнім ключем FOREIGN KEY
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_name TEXT NOT NULL,
+        price REAL NOT NULL,
+        user_id INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    )
+    """
+    )
+
+    connection.commit()
+    connection.close()
 
 
 async def check_telegram_messages():
     offset = 0
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-
-    print("🤖 Бот-асистент запущений і слухає команди в Telegram...")
 
     while True:
         try:
@@ -37,7 +66,9 @@ async def check_telegram_messages():
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
                             cursor.execute("SELECT COUNT(*) FROM users")
-                            count = cursor.fetchone()[0]
+                            users_count = cursor.fetchone()[0]
+                            cursor.execute("SELECT COUNT(*) FROM orders")
+                            orders_count = cursor.fetchone()[0]
                             connection.close()
 
                             reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -45,7 +76,7 @@ async def check_telegram_messages():
                                 reply_url,
                                 json={
                                     "chat_id": MY_CHAT_ID,
-                                    "text": f" Звіт по БД:\nНаразі в базі даних зареєстровано користувачів: {count} 👤",
+                                    "text": f"📊 Звіт по БД:\n👤 Користувачів: {users_count}\n🛒 Замовлень: {orders_count}",
                                 },
                             )
 
@@ -68,13 +99,15 @@ async def check_telegram_messages():
                                         (user_id,),
                                     )
                                     connection.commit()
-                                    reply_text = f"🗑️ Користувача {user_name} (ID: {user_id}) успішно видалено з бази!"
+                                    reply_text = f"🗑️ Користувача {user_name} (ID: {user_id}) видалено з бази!"
                                 else:
-                                    reply_text = f"❓ Користувача з ID {user_id} не знайдено в базі даних."
+                                    reply_text = f"❓ Користувача з ID {user_id} не знайдено."
 
                                 connection.close()
                             else:
-                                reply_text = "⚠️ Неправильний формат! Пиши так: /delete [номер_ID]"
+                                reply_text = (
+                                    "⚠️ Неправильний формат! Пиши: /delete [ID]"
+                                )
 
                             reply_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
                             requests.post(
@@ -93,6 +126,7 @@ async def check_telegram_messages():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_db()  # Автоматично створюємо таблиці при запуску сервера
     asyncio.create_task(check_telegram_messages())
     yield
 
@@ -113,7 +147,13 @@ class UserInput(BaseModel):
     age: int
 
 
-#  ПЕРЕВІРКА ПАРОЛЯ У ЗАГОЛОВКАХ
+# Модель для створення замовлення
+class OrderInput(BaseModel):
+    item_name: str
+    price: float
+    user_id: int
+
+
 @app.get("/users")
 def get_users_from_db(x_password: str = Header(None)):
     if x_password != ADMIN_PASSWORD:
@@ -123,13 +163,20 @@ def get_users_from_db(x_password: str = Header(None)):
 
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM users")
-    all_users = cursor.fetchall()
+
+    # Складний SQL-запит (JOIN), який об'єднує користувачів та їхні замовлення!
+    cursor.execute(
+        """
+        SELECT users.id, users.name, users.age, orders.item_name, orders.price
+        FROM users
+        LEFT JOIN orders ON users.id = orders.user_id
+    """
+    )
+    data = cursor.fetchall()
     connection.close()
-    return {"users_in_database": all_users}
+    return {"users_and_orders": data}
 
 
-#  ПЕРЕВІРКА ПАРОЛЯ ДЛЯ ДОДАВАННЯ
 @app.post("/add-user")
 def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     if x_password != ADMIN_PASSWORD:
@@ -145,10 +192,44 @@ def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     connection.commit()
     connection.close()
 
-    text_message = f"🔔 Новий користувач на сайті!\n👤 Ім'я: {user.name}\n🎂 Вік: {user.age}"
+    text_message = f"🔔 Новий користувач!\n👤 Ім'я: {user.name}\n🎂 Вік: {user.age}"
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(
         telegram_url, json={"chat_id": MY_CHAT_ID, "text": text_message}
     )
 
     return {"status": "success", "message": f"Користувача {user.name} додано!"}
+
+
+# 🛒 НОВИЙ МЕТОД: Додавання замовлення для користувача
+@app.post("/add-order")
+def add_order_to_db(order: OrderInput, x_password: str = Header(None)):
+    if x_password != ADMIN_PASSWORD:
+        raise HTTPException(
+            status_code=401, detail="Невірний пароль доступу!"
+        )
+
+    connection = sqlite3.connect("my_database.db")
+    cursor = connection.cursor()
+
+    # Перевіримо, чи існує такий юзер
+    cursor.execute("SELECT name FROM users WHERE id = ?", (order.user_id,))
+    user = cursor.fetchone()
+
+    if not user:
+        connection.close()
+        raise HTTPException(
+            status_code=404, detail="Користувача з таким ID не існує!"
+        )
+
+    cursor.execute(
+        "INSERT INTO orders (item_name, price, user_id) VALUES (?, ?, ?)",
+        (order.item_name, order.price, order.user_id),
+    )
+    connection.commit()
+    connection.close()
+
+    return {
+        "status": "success",
+        "message": f"Товар '{order.item_name}' за ${order.price} успішно прив'язано до {user[0]} (ID: {order.user_id})!",
+    }
