@@ -1,4 +1,7 @@
 import asyncio
+import csv
+import hashlib
+import os
 import sqlite3
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException
@@ -8,15 +11,37 @@ import requests
 
 TELEGRAM_TOKEN = "8916527546:AAGzG2i9GZBCYlA9W7pmpiSZfdQLMC0uKUw"
 MY_CHAT_ID = 6561129115
-ADMIN_PASSWORD = "stas_secret_pass"
+
+# 🔑 Пароль адміна у відкритому вигляді для порівняння
+RAW_PASSWORD = "stas_secret_pass"
+# Генеруємо еталонний SHA-256 хеш пароля
+ADMIN_PASSWORD_HASH = hashlib.sha256(RAW_PASSWORD.encode("utf-8")).hexdigest()
 
 
-# 🛠️ Створення/ініціалізація баз даних при запуску
+# 🔐 Функція автентифікації за хешем
+def check_auth(x_password: str = Header(None)):
+    if not x_password:
+        raise HTTPException(
+            status_code=401, detail="Пароль не надано у заголовках!"
+        )
+
+    # Видаляємо випадкові пробіли чи лапки
+    clean_pass = x_password.strip().strip('"').strip("'")
+    # Перетворюємо введений пароль у хеш
+    user_hash = hashlib.sha256(clean_pass.encode("utf-8")).hexdigest()
+
+    # Порівнюємо зашифровані хеші
+    if user_hash != ADMIN_PASSWORD_HASH:
+        raise HTTPException(
+            status_code=401, detail="Невірний пароль доступу!"
+        )
+
+
+# 🛠️ Створення двох пов'язаних таблиць у БД
 def init_db():
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
 
-    # Таблиця користувачів
     cursor.execute(
         """
     CREATE TABLE IF NOT EXISTS users (
@@ -27,7 +52,6 @@ def init_db():
     """
     )
 
-    # Нова таблиця замовлень із зовнішнім ключем FOREIGN KEY
     cursor.execute(
         """
     CREATE TABLE IF NOT EXISTS orders (
@@ -44,6 +68,7 @@ def init_db():
     connection.close()
 
 
+# 🤖 Telegram-бот
 async def check_telegram_messages():
     offset = 0
     telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
@@ -62,6 +87,7 @@ async def check_telegram_messages():
                     text = message.get("text", "")
 
                     if chat_id == MY_CHAT_ID:
+                        # 📊 Звіт по кількості записів
                         if text == "/status":
                             connection = sqlite3.connect("my_database.db")
                             cursor = connection.cursor()
@@ -80,6 +106,50 @@ async def check_telegram_messages():
                                 },
                             )
 
+                        # 📁 Експорт звітів у CSV
+                        elif text == "/export":
+                            connection = sqlite3.connect("my_database.db")
+                            cursor = connection.cursor()
+                            cursor.execute(
+                                """
+                                SELECT users.id, users.name, users.age, 
+                                       IFNULL(orders.item_name, 'Немає покупок'), 
+                                       IFNULL(orders.price, 0)
+                                FROM users
+                                LEFT JOIN orders ON users.id = orders.user_id
+                            """
+                            )
+                            rows = cursor.fetchall()
+                            connection.close()
+
+                            filename = "database_report.csv"
+                            with open(
+                                filename, mode="w", newline="", encoding="utf-8"
+                            ) as file:
+                                writer = csv.writer(file)
+                                writer.writerow(
+                                    [
+                                        "User ID",
+                                        "Name",
+                                        "Age",
+                                        "Item Name",
+                                        "Price ($)",
+                                    ]
+                                )
+                                writer.writerows(rows)
+
+                            doc_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+                            with open(filename, "rb") as file_to_send:
+                                requests.post(
+                                    doc_url,
+                                    data={"chat_id": MY_CHAT_ID},
+                                    files={"document": file_to_send},
+                                )
+
+                            if os.path.exists(filename):
+                                os.remove(filename)
+
+                        # 🗑️ Видалення запису
                         elif text.startswith("/delete "):
                             parts = text.split(" ")
                             if len(parts) == 2 and parts[1].isdigit():
@@ -99,7 +169,7 @@ async def check_telegram_messages():
                                         (user_id,),
                                     )
                                     connection.commit()
-                                    reply_text = f"🗑️ Користувача {user_name} (ID: {user_id}) видалено з бази!"
+                                    reply_text = f"🗑️ Користувача {user_name} (ID: {user_id}) видалено!"
                                 else:
                                     reply_text = f"❓ Користувача з ID {user_id} не знайдено."
 
@@ -126,7 +196,7 @@ async def check_telegram_messages():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()  # Автоматично створюємо таблиці при запуску сервера
+    init_db()
     asyncio.create_task(check_telegram_messages())
     yield
 
@@ -147,24 +217,19 @@ class UserInput(BaseModel):
     age: int
 
 
-# Модель для створення замовлення
 class OrderInput(BaseModel):
     item_name: str
     price: float
     user_id: int
 
 
+# 🔍 Ендпоінт отримання користувачів та їх покупок
 @app.get("/users")
 def get_users_from_db(x_password: str = Header(None)):
-    if x_password != ADMIN_PASSWORD:
-        raise HTTPException(
-            status_code=401, detail="Невірний пароль доступу!"
-        )
+    check_auth(x_password)
 
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
-
-    # Складний SQL-запит (JOIN), який об'єднує користувачів та їхні замовлення!
     cursor.execute(
         """
         SELECT users.id, users.name, users.age, orders.item_name, orders.price
@@ -177,12 +242,10 @@ def get_users_from_db(x_password: str = Header(None)):
     return {"users_and_orders": data}
 
 
+# 👤 Ендпоінт додавання користувача
 @app.post("/add-user")
 def add_user_to_db(user: UserInput, x_password: str = Header(None)):
-    if x_password != ADMIN_PASSWORD:
-        raise HTTPException(
-            status_code=401, detail="Невірний пароль доступу!"
-        )
+    check_auth(x_password)
 
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
@@ -201,18 +264,14 @@ def add_user_to_db(user: UserInput, x_password: str = Header(None)):
     return {"status": "success", "message": f"Користувача {user.name} додано!"}
 
 
-# 🛒 НОВИЙ МЕТОД: Додавання замовлення для користувача
+# 🛒 Ендпоінт додавання покупки
 @app.post("/add-order")
 def add_order_to_db(order: OrderInput, x_password: str = Header(None)):
-    if x_password != ADMIN_PASSWORD:
-        raise HTTPException(
-            status_code=401, detail="Невірний пароль доступу!"
-        )
+    check_auth(x_password)
 
     connection = sqlite3.connect("my_database.db")
     cursor = connection.cursor()
 
-    # Перевіримо, чи існує такий юзер
     cursor.execute("SELECT name FROM users WHERE id = ?", (order.user_id,))
     user = cursor.fetchone()
 
@@ -231,5 +290,5 @@ def add_order_to_db(order: OrderInput, x_password: str = Header(None)):
 
     return {
         "status": "success",
-        "message": f"Товар '{order.item_name}' за ${order.price} успішно прив'язано до {user[0]} (ID: {order.user_id})!",
+        "message": f"Товар '{order.item_name}' за ${order.price} додано до {user[0]}!",
     }
